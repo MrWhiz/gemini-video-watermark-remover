@@ -7,8 +7,8 @@ import shutil
 from typing import Dict
 import cv2
 import numpy as np
-
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query
+import logging
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,22 @@ from engine.inpainter import (
     LAMA_MODEL_PATH, download_lama_model
 )
 
+# Silence external IDE / background MCP probes in uvicorn access logs
+class SuppressProbeLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("/mcp" in msg or "/.well-known" in msg)
+
+logging.getLogger("uvicorn.access").addFilter(SuppressProbeLogFilter())
+
 app = FastAPI(title="Gemini AI Video Watermark Remover")
+
+# Silently handle background IDE MCP probes without errors or noisy logs
+@app.api_route("/mcp", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/.well-known/{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def absorb_mcp_probes():
+    return Response(status_code=204)
+
 
 app.add_middleware(
     CORSMiddleware,
