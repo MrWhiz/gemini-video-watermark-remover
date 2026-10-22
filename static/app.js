@@ -262,6 +262,9 @@ function initializeSliders(meta) {
     sliderH.value = sliderW.value;
   }
 
+  currentMaskW = parseInt(sliderW.value) || 68;
+  currentMaskH = parseInt(sliderH.value) || 68;
+
   updateSliderValueLabels();
 }
 
@@ -275,17 +278,93 @@ function updateSliderValueLabels() {
 }
 
 // Sliders and Position Events
+let currentMaskW = 68;
+let currentMaskH = 68;
+let sliderLiveIndicatorTimer = null;
+
+function showSliderLiveBox() {
+  updateDragIndicator(parseInt(sliderX.value), parseInt(sliderY.value), parseInt(sliderW.value), parseInt(sliderH.value));
+  clearTimeout(sliderLiveIndicatorTimer);
+  sliderLiveIndicatorTimer = setTimeout(hideDragIndicator, 400);
+}
+
 function setupSliderEvents() {
-  const sliders = [sliderX, sliderY, sliderW, sliderH, sliderDilation, sliderFeather];
-  sliders.forEach(slider => {
+  // Width slider: expands symmetrically from center
+  sliderW.addEventListener('input', () => {
+    const newW = parseInt(sliderW.value) || 10;
+    const diffW = newW - currentMaskW;
+    currentMaskW = newW;
+
+    const maxBoundW = videoMetadata ? videoMetadata.width : (parseInt(sliderX.max) || 1920);
+    const maxBoundH = videoMetadata ? videoMetadata.height : (parseInt(sliderY.max) || 1080);
+
+    let curX = parseInt(sliderX.value) || 0;
+    // Shift top-left X by half the width delta so center stays fixed
+    let newX = Math.round(curX - diffW / 2);
+    newX = Math.max(0, Math.min(Math.max(0, maxBoundW - newW), newX));
+    sliderX.value = newX;
+
+    if (selectedShape === 'star' || selectedShape === 'circle') {
+      const diffH = newW - currentMaskH;
+      currentMaskH = newW;
+      sliderH.value = newW;
+
+      let curY = parseInt(sliderY.value) || 0;
+      // Shift top-left Y by half the height delta so center stays fixed
+      let newY = Math.round(curY - diffH / 2);
+      newY = Math.max(0, Math.min(Math.max(0, maxBoundH - newW), newY));
+      sliderY.value = newY;
+    }
+
+    updateSliderValueLabels();
+    showSliderLiveBox();
+    schedulePreviewRefresh();
+  });
+
+  // Height slider: expands symmetrically from center
+  sliderH.addEventListener('input', () => {
+    const newH = parseInt(sliderH.value) || 10;
+    const diffH = newH - currentMaskH;
+    currentMaskH = newH;
+
+    const maxBoundW = videoMetadata ? videoMetadata.width : (parseInt(sliderX.max) || 1920);
+    const maxBoundH = videoMetadata ? videoMetadata.height : (parseInt(sliderY.max) || 1080);
+
+    let curY = parseInt(sliderY.value) || 0;
+    // Shift top-left Y by half the height delta so center stays fixed
+    let newY = Math.round(curY - diffH / 2);
+    newY = Math.max(0, Math.min(Math.max(0, maxBoundH - newH), newY));
+    sliderY.value = newY;
+
+    if (selectedShape === 'star' || selectedShape === 'circle') {
+      const diffW = newH - currentMaskW;
+      currentMaskW = newH;
+      sliderW.value = newH;
+
+      let curX = parseInt(sliderX.value) || 0;
+      // Shift top-left X by half the width delta so center stays fixed
+      let newX = Math.round(curX - diffW / 2);
+      newX = Math.max(0, Math.min(Math.max(0, maxBoundW - newH), newX));
+      sliderX.value = newX;
+    }
+
+    updateSliderValueLabels();
+    showSliderLiveBox();
+    schedulePreviewRefresh();
+  });
+
+  // X and Y position sliders
+  [sliderX, sliderY].forEach(slider => {
     slider.addEventListener('input', () => {
-      if (selectedShape === 'star' || selectedShape === 'circle') {
-        if (slider === sliderW) {
-          sliderH.value = sliderW.value;
-        } else if (slider === sliderH) {
-          sliderW.value = sliderH.value;
-        }
-      }
+      updateSliderValueLabels();
+      showSliderLiveBox();
+      schedulePreviewRefresh();
+    });
+  });
+
+  // Dilation and Feather sliders
+  [sliderDilation, sliderFeather].forEach(slider => {
+    slider.addEventListener('input', () => {
       updateSliderValueLabels();
       schedulePreviewRefresh();
     });
@@ -295,7 +374,6 @@ function setupSliderEvents() {
     updateTimelineReadout(parseFloat(timelineSlider.value));
     schedulePreviewRefresh();
   });
-
 }
 
 function updateTimelineReadout(seconds) {
@@ -334,6 +412,9 @@ async function refreshPreviewFrame() {
   img.onload = () => {
     previewImg.src = url;
     previewLoader.classList.remove('active');
+    if (!isDraggingMask) {
+      hideDragIndicator();
+    }
   };
   img.onerror = () => {
     previewLoader.classList.remove('active');
@@ -417,6 +498,8 @@ function handlePointerPosition(clientX, clientY) {
 
   sliderX.value = posX;
   sliderY.value = posY;
+  currentMaskW = w;
+  currentMaskH = h;
 
   updateSliderValueLabels();
   updateDragIndicator(posX, posY, w, h);
@@ -477,10 +560,31 @@ function setupShapeEvents() {
       selectedShape = btn.dataset.shape;
 
       if (selectedShape === 'star' || selectedShape === 'circle') {
-        const size = Math.max(parseInt(sliderW.value) || 68, parseInt(sliderH.value) || 68);
+        const curW = parseInt(sliderW.value) || 68;
+        const curH = parseInt(sliderH.value) || 68;
+        const size = Math.max(curW, curH);
+
+        const diffW = size - curW;
+        const diffH = size - curH;
+        currentMaskW = size;
+        currentMaskH = size;
         sliderW.value = size;
         sliderH.value = size;
+
+        const maxBoundW = videoMetadata ? videoMetadata.width : (parseInt(sliderX.max) || 1920);
+        const maxBoundH = videoMetadata ? videoMetadata.height : (parseInt(sliderY.max) || 1080);
+
+        let curX = parseInt(sliderX.value) || 0;
+        let curY = parseInt(sliderY.value) || 0;
+        let newX = Math.round(curX - diffW / 2);
+        let newY = Math.round(curY - diffH / 2);
+        newX = Math.max(0, Math.min(Math.max(0, maxBoundW - size), newX));
+        newY = Math.max(0, Math.min(Math.max(0, maxBoundH - size), newY));
+
+        sliderX.value = newX;
+        sliderY.value = newY;
         updateSliderValueLabels();
+        showSliderLiveBox();
       }
 
       schedulePreviewRefresh();
