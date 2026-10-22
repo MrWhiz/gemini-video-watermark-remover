@@ -14,7 +14,7 @@ It combines **CUDA GPU-accelerated neural inpainting (LaMa)**, **OpenCV boundary
 - **Interactive Click & Draggable Mask Targeting**:
   - Simply **click and drag** anywhere directly on the preview frame to fluidly move and position the mask over the watermark in real time.
   - Live visual bounding box provides immediate sub-millisecond feedback while dragging.
-  - Proportional bidirectional scaling keeps Gemini Star and Circle contours perfectly square when adjusting size.
+  - Proportional bidirectional scaling resizes contours symmetrically from their center, keeping Gemini Star and Circle shapes locked onto the watermark.
 - **Multi-Method Inpainting Engine**:
   - **LaMa AI (Neural Inpainting)**: Deep learning texture synthesis with Fast Fourier Convolutions. Hardware-accelerated with **NVIDIA CUDA GPU** (e.g. RTX 4060 Ti) running at ~10 FPS for video, and <0.2s for images.
   - **OpenCV Telea (Fast Marching)**: Propagates surrounding pixel gradients into the star shape. Clean edges and runs at 60+ FPS without ML overhead.
