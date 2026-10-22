@@ -241,6 +241,10 @@ function initializeSliders(meta) {
     });
   }
 
+  if (selectedShape === 'star' || selectedShape === 'circle') {
+    sliderH.value = sliderW.value;
+  }
+
   updateSliderValueLabels();
 }
 
@@ -258,6 +262,13 @@ function setupSliderEvents() {
   const sliders = [sliderX, sliderY, sliderW, sliderH, sliderDilation, sliderFeather];
   sliders.forEach(slider => {
     slider.addEventListener('input', () => {
+      if (selectedShape === 'star' || selectedShape === 'circle') {
+        if (slider === sliderW) {
+          sliderH.value = sliderW.value;
+        } else if (slider === sliderH) {
+          sliderW.value = sliderH.value;
+        }
+      }
       updateSliderValueLabels();
       schedulePreviewRefresh();
     });
@@ -447,6 +458,14 @@ function setupShapeEvents() {
       shapeBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedShape = btn.dataset.shape;
+
+      if (selectedShape === 'star' || selectedShape === 'circle') {
+        const size = Math.max(parseInt(sliderW.value) || 68, parseInt(sliderH.value) || 68);
+        sliderW.value = size;
+        sliderH.value = size;
+        updateSliderValueLabels();
+      }
+
       schedulePreviewRefresh();
     });
   });
