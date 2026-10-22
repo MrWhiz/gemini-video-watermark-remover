@@ -206,7 +206,9 @@ function resetDropzone() {
 }
 
 function displayVideoMetadata(filename, meta) {
-  document.getElementById('meta-filename').textContent = filename;
+  const metaFilename = document.getElementById('meta-filename');
+  metaFilename.textContent = filename;
+  metaFilename.title = filename;
   document.getElementById('meta-resolution').textContent = `${meta.width} × ${meta.height}`;
   document.getElementById('meta-duration').textContent = `${meta.duration}s (${meta.total_frames} frames)`;
   document.getElementById('meta-fps').textContent = `${meta.fps} FPS`;
