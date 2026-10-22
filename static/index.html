@@ -39,21 +39,21 @@
       <div class="panel-title">
         <div class="panel-title-text">
           <span class="step-num">1</span>
-          <span>Select or Drop Video</span>
+          <span>Select or Drop Video / Image</span>
         </div>
       </div>
 
-      <input type="file" id="video-file-input" accept="video/mp4,video/quicktime,video/x-matroska,video/webm" style="display: none;">
+      <input type="file" id="video-file-input" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,image/png,image/jpeg,image/webp,image/bmp" style="display: none;">
       <div class="dropzone" id="dropzone">
         <div class="drop-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
           </svg>
         </div>
-        <div class="drop-text-main">Drop your video here or click to browse</div>
-        <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM (up to 4K resolution)</div>
+        <div class="drop-text-main">Drop your video or image here or click to browse</div>
+        <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM videos &amp; PNG, JPG, WebP images (up to 4K)</div>
         <div class="file-specs">
-          <span class="spec-pill">Audio Preserved</span>
+          <span class="spec-pill">Video &amp; Image Support</span>
           <span class="spec-pill">Local Processing</span>
           <span class="spec-pill">Hardware Accelerated</span>
         </div>
@@ -329,14 +329,14 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z"/>
           </svg>
-          Remove Watermark & Export Video
+          <span id="btn-process-label">Remove Watermark &amp; Export Video</span>
         </button>
       </section>
 
       <!-- Processing Progress Panel -->
       <section class="glass-panel progress-card" id="progress-card">
         <div class="progress-header">
-          <span class="progress-status-text" id="progress-status-label">Processing Video...</span>
+          <span class="progress-status-text" id="progress-status-label">Processing...</span>
           <span class="progress-pct" id="progress-percentage">0%</span>
         </div>
         <div class="progress-bar-container">
@@ -376,6 +376,7 @@
 
         <div class="result-video-wrapper">
           <video id="result-video-player" controls preload="metadata"></video>
+          <img id="result-image-player" class="result-img" alt="Clean Inpainted Image" style="display: none; width: 100%; max-height: 480px; object-fit: contain; border-radius: var(--radius-md);">
         </div>
 
         <div class="result-actions">
@@ -383,10 +384,10 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
             </svg>
-            Download Clean Video
+            <span id="btn-download-label">Download Clean Video</span>
           </button>
           <button class="btn-secondary" id="btn-reprocess" style="flex: 1;">
-            Process Another Video
+            Process Another File
           </button>
         </div>
       </section>

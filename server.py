@@ -66,11 +66,18 @@ class ProcessRequest(BaseModel):
 async def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
+ALLOWED_VIDEO_EXTS = [".mp4", ".mov", ".mkv", ".webm", ".avi"]
+ALLOWED_IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
+ALLOWED_EXTS = ALLOWED_VIDEO_EXTS + ALLOWED_IMAGE_EXTS
+
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in [".mp4", ".mov", ".mkv", ".webm", ".avi"]:
-        raise HTTPException(status_code=400, detail="Unsupported video format. Please upload MP4, MOV, MKV, or WEBM.")
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported format. Please upload MP4, MOV, MKV, WebM video or PNG, JPG, WebP image."
+        )
     
     video_id = str(uuid.uuid4())[:8]
     save_filename = f"{video_id}{ext}"
@@ -84,7 +91,7 @@ async def upload_video(file: UploadFile = File(...)):
     except Exception as e:
         if os.path.exists(save_path):
             os.remove(save_path)
-        raise HTTPException(status_code=400, detail=f"Failed to inspect video: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to inspect media: {str(e)}")
         
     video_registry[video_id] = {
         "id": video_id,
@@ -103,12 +110,19 @@ async def upload_video(file: UploadFile = File(...)):
 async def serve_video(video_id: str):
     if video_id in video_registry:
         path = video_registry[video_id]["path"]
-        return FileResponse(path, media_type="video/mp4")
     elif video_id in tasks:
         path = tasks[video_id].output_path
-        if os.path.exists(path):
-            return FileResponse(path, media_type="video/mp4")
-    raise HTTPException(status_code=404, detail="Video not found")
+    else:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ALLOWED_IMAGE_EXTS:
+        media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else f"image/{ext.lstrip('.')}"
+        return FileResponse(path, media_type=media_type)
+    return FileResponse(path, media_type="video/mp4")
 
 @app.get("/api/preview-frame")
 async def preview_frame(
@@ -164,8 +178,12 @@ async def start_process(req: ProcessRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="Video not found")
 
     input_path = video_registry[req.video_id]["path"]
+    ext = os.path.splitext(input_path)[1].lower()
     task_id = str(uuid.uuid4())[:8]
-    output_filename = f"watermark_removed_{task_id}.mp4"
+    if ext in ALLOWED_IMAGE_EXTS:
+        output_filename = f"watermark_removed_{task_id}{ext}"
+    else:
+        output_filename = f"watermark_removed_{task_id}.mp4"
     output_path = os.path.join(OUTPUTS_DIR, output_filename)
 
     task = VideoProcessingTask(
@@ -191,8 +209,11 @@ async def task_status(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found")
         
     t = tasks[task_id]
+    ext = os.path.splitext(t.output_path)[1].lower()
+    is_image = ext in ALLOWED_IMAGE_EXTS
     return {
         "task_id": t.task_id,
+        "is_image": is_image,
         "status": t.status,
         "progress": t.progress,
         "current_frame": t.current_frame,
@@ -217,12 +238,20 @@ async def download_output(task_id: str):
         
     path = tasks[task_id].output_path
     if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Output video file not ready")
+        raise HTTPException(status_code=404, detail="Output file not ready")
         
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ALLOWED_IMAGE_EXTS:
+        media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else f"image/{ext.lstrip('.')}"
+        filename = f"clean_gemini_image_{task_id}{ext}"
+    else:
+        media_type = "video/mp4"
+        filename = f"clean_gemini_video_{task_id}.mp4"
+
     return FileResponse(
         path,
-        media_type="video/mp4",
-        filename=f"clean_gemini_video_{task_id}.mp4"
+        media_type=media_type,
+        filename=filename
     )
 
 @app.get("/api/model-status")

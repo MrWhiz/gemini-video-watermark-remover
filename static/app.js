@@ -148,7 +148,26 @@ async function handleFileUpload(file) {
     currentVideoId = data.video_id;
     videoMetadata = data.meta;
 
-    // Show ready state with file info and option to replace
+    const isImage = data.meta.is_image;
+    const btnProcessLabel = document.getElementById('btn-process-label');
+    if (btnProcessLabel) {
+      btnProcessLabel.textContent = isImage ? "Remove Watermark & Export Image" : "Remove Watermark & Export Video";
+    }
+
+    const scrubberRow = document.querySelector('.scrubber-control-row');
+    if (scrubberRow) {
+      scrubberRow.style.display = isImage ? 'none' : 'flex';
+    }
+
+    const specsHtml = isImage ? `
+      <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">Image</span>
+      <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.width} × ${data.meta.height}</span>
+    ` : `
+      <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.width} × ${data.meta.height}</span>
+      <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.duration}s</span>
+      <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.fps} FPS</span>
+    `;
+
     dropzone.innerHTML = `
       <div class="drop-icon" style="color: #34d399;">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -157,11 +176,9 @@ async function handleFileUpload(file) {
         </svg>
       </div>
       <div class="drop-text-main" style="color: #34d399;">${data.filename} is ready</div>
-      <div class="drop-text-sub">Click or drop another file anytime to replace this video</div>
+      <div class="drop-text-sub">Click or drop another file anytime to replace this ${isImage ? 'image' : 'video'}</div>
       <div class="file-specs">
-        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.width} × ${data.meta.height}</span>
-        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.duration}s</span>
-        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.fps} FPS</span>
+        ${specsHtml}
       </div>
     `;
 
@@ -183,7 +200,7 @@ async function handleFileUpload(file) {
     refreshPreviewFrame();
 
   } catch (error) {
-    alert("Error uploading video: " + error.message);
+    alert("Error uploading file: " + error.message);
     resetDropzone();
   }
 }
@@ -195,10 +212,10 @@ function resetDropzone() {
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
       </svg>
     </div>
-    <div class="drop-text-main">Drop your video here or click to browse</div>
-    <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM (up to 4K resolution)</div>
+    <div class="drop-text-main">Drop your video or image here or click to browse</div>
+    <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM videos &amp; PNG, JPG, WebP images (up to 4K)</div>
     <div class="file-specs">
-      <span class="spec-pill">Audio Preserved</span>
+      <span class="spec-pill">Video &amp; Image Support</span>
       <span class="spec-pill">Local Processing</span>
       <span class="spec-pill">Hardware Accelerated</span>
     </div>
@@ -210,12 +227,12 @@ function displayVideoMetadata(filename, meta) {
   metaFilename.textContent = filename;
   metaFilename.title = filename;
   document.getElementById('meta-resolution').textContent = `${meta.width} × ${meta.height}`;
-  document.getElementById('meta-duration').textContent = `${meta.duration}s (${meta.total_frames} frames)`;
-  document.getElementById('meta-fps').textContent = `${meta.fps} FPS`;
-  document.getElementById('meta-audio').textContent = meta.has_audio ? "Yes (Preserved)" : "None";
+  document.getElementById('meta-duration').textContent = meta.is_image ? "Image (1 Frame)" : `${meta.duration}s (${meta.total_frames} frames)`;
+  document.getElementById('meta-fps').textContent = meta.is_image ? "Static" : `${meta.fps} FPS`;
+  document.getElementById('meta-audio').textContent = meta.is_image ? "N/A" : (meta.has_audio ? "Yes (Preserved)" : "None");
   videoMetaBar.classList.remove('hidden');
 
-  timelineSlider.max = meta.duration;
+  timelineSlider.max = meta.duration || 0;
   timelineSlider.value = 0;
   updateTimelineReadout(0);
 }
@@ -576,7 +593,7 @@ function startProgressPolling(taskId) {
         progressStatusLabel.textContent = "Muxing audio & finalizing video...";
       } else if (data.status === 'completed') {
         clearInterval(progressPollTimer);
-        handleTaskCompleted(taskId);
+        handleTaskCompleted(taskId, data.is_image);
       } else if (data.status === 'cancelled') {
         clearInterval(progressPollTimer);
         progressStatusLabel.textContent = "Processing cancelled.";
@@ -593,13 +610,27 @@ function startProgressPolling(taskId) {
   }, 400);
 }
 
-function handleTaskCompleted(taskId) {
+function handleTaskCompleted(taskId, isImage) {
   progressCard.classList.remove('active');
   btnStartProcess.disabled = false;
 
   resultCard.classList.add('active');
-  resultVideoPlayer.src = `/api/video/${taskId}?t=${Date.now()}`;
-  resultVideoPlayer.load();
+
+  const resultImagePlayer = document.getElementById('result-image-player');
+  const btnDownloadLabel = document.getElementById('btn-download-label');
+
+  if (isImage || (videoMetadata && videoMetadata.is_image)) {
+    resultVideoPlayer.style.display = 'none';
+    resultImagePlayer.style.display = 'block';
+    resultImagePlayer.src = `/api/video/${taskId}?t=${Date.now()}`;
+    if (btnDownloadLabel) btnDownloadLabel.textContent = "Download Clean Image";
+  } else {
+    resultImagePlayer.style.display = 'none';
+    resultVideoPlayer.style.display = 'block';
+    resultVideoPlayer.src = `/api/video/${taskId}?t=${Date.now()}`;
+    resultVideoPlayer.load();
+    if (btnDownloadLabel) btnDownloadLabel.textContent = "Download Clean Video";
+  }
 
   btnDownloadVideo.onclick = () => {
     window.location.href = `/api/download/${taskId}`;

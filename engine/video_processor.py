@@ -10,13 +10,33 @@ from typing import Callable, Optional, Dict, Any
 from engine.mask_generator import generate_mask, get_default_gemini_bbox
 from engine.inpainter import TeleaInpainter, NavierStokesInpainter, BlurInpainter, LamaInpainter
 
-def get_video_metadata(video_path: str) -> Dict[str, Any]:
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
+def get_video_metadata(media_path: str) -> Dict[str, Any]:
     """
-    Extracts video width, height, duration, fps, frame count, and audio status.
+    Extracts metadata for video or image files.
     """
-    cap = cv2.VideoCapture(video_path)
+    ext = os.path.splitext(media_path)[1].lower()
+    if ext in IMAGE_EXTENSIONS:
+        img = cv2.imread(media_path)
+        if img is None:
+            raise ValueError(f"Could not open image file: {media_path}")
+        height, width = img.shape[:2]
+        default_box = get_default_gemini_bbox(width, height)
+        return {
+            "is_image": True,
+            "width": width,
+            "height": height,
+            "fps": 0,
+            "total_frames": 1,
+            "duration": 0.0,
+            "has_audio": False,
+            "suggested_box": default_box
+        }
+
+    cap = cv2.VideoCapture(media_path)
     if not cap.isOpened():
-        raise ValueError(f"Could not open video file: {video_path}")
+        raise ValueError(f"Could not open video file: {media_path}")
     
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -31,7 +51,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     try:
         cmd = [
             "ffprobe", "-v", "error", "-select_streams", "a:0",
-            "-show_entries", "stream=codec_type", "-of", "default=nw=1:nk=1", video_path
+            "-show_entries", "stream=codec_type", "-of", "default=nw=1:nk=1", media_path
         ]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if "audio" in res.stdout:
@@ -42,6 +62,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     default_box = get_default_gemini_bbox(width, height)
 
     return {
+        "is_image": False,
         "width": width,
         "height": height,
         "fps": round(fps, 3),
@@ -51,11 +72,15 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
         "suggested_box": default_box
     }
 
-def extract_frame_at_time(video_path: str, timestamp_sec: float) -> Optional[np.ndarray]:
+def extract_frame_at_time(media_path: str, timestamp_sec: float) -> Optional[np.ndarray]:
     """
-    Extracts a single frame at the given timestamp.
+    Extracts a single frame at timestamp, or loads image directly if input is an image.
     """
-    cap = cv2.VideoCapture(video_path)
+    ext = os.path.splitext(media_path)[1].lower()
+    if ext in IMAGE_EXTENSIONS:
+        return cv2.imread(media_path)
+
+    cap = cv2.VideoCapture(media_path)
     if not cap.isOpened():
         return None
     
@@ -100,9 +125,52 @@ class VideoProcessingTask:
         self.is_cancelled = True
         self.status = "cancelled"
 
+    def _run_image_inpaint(self):
+        img = cv2.imread(self.input_path)
+        if img is None:
+            raise ValueError(f"Could not load image: {self.input_path}")
+        height, width = img.shape[:2]
+        self.total_frames = 1
+        self.current_frame = 1
+        self.progress = 50.0
+
+        mask = generate_mask(
+            height=height,
+            width=width,
+            x=self.bbox["x"],
+            y=self.bbox["y"],
+            w=self.bbox["w"],
+            h=self.bbox["h"],
+            shape=self.shape,
+            dilation=self.dilation,
+            feather=self.feather
+        )
+
+        if self.method == "lama":
+            inpainter = LamaInpainter()
+            if not inpainter.is_available():
+                inpainter = TeleaInpainter()
+        elif self.method == "navier_stokes":
+            inpainter = NavierStokesInpainter()
+        elif self.method == "blur":
+            inpainter = BlurInpainter()
+        else:
+            inpainter = TeleaInpainter()
+
+        clean_img = inpainter.inpaint(img, mask, self.bbox)
+        cv2.imwrite(self.output_path, clean_img)
+
+        self.progress = 100.0
+        self.status = "completed"
+
     def run(self):
         try:
             self.status = "processing"
+            ext = os.path.splitext(self.input_path)[1].lower()
+            if ext in IMAGE_EXTENSIONS:
+                self._run_image_inpaint()
+                return
+
             meta = get_video_metadata(self.input_path)
             width = meta["width"]
             height = meta["height"]
