@@ -306,6 +306,23 @@ body {
   display: block;
   cursor: crosshair;
   user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+}
+
+.drag-indicator-box {
+  position: absolute;
+  pointer-events: none;
+  border: 2px dashed #00e5ff;
+  background: rgba(0, 229, 255, 0.18);
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  display: none;
+  z-index: 10;
+}
+
+.drag-indicator-box.active {
+  display: block;
 }
 
 .preview-click-hint {

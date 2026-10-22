@@ -94,27 +94,12 @@
             <div class="panel-title-text">
               <span class="step-num">2</span>
               <span>Watermark Targeter & Live Preview</span>
-            </div>
-            <div class="preset-actions-row">
-              <button class="btn-secondary" id="btn-auto-detect" title="Scan current frame to auto-detect watermark/logo">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                Auto-Detect Logo
-              </button>
-              <button class="btn-secondary" id="btn-auto-gemini" title="Reset to standard Gemini corner">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
-                </svg>
-                Gemini Preset
-              </button>
-            </div>
           </div>
 
           <!-- Video Frame Viewer -->
           <div class="preview-viewer-wrapper" id="preview-wrapper">
-            <img id="preview-image" class="preview-img" alt="Frame Preview" title="Click anywhere on the frame to move mask here">
+            <img id="preview-image" class="preview-img" alt="Frame Preview" title="Click and drag to position mask">
+            <div id="drag-indicator-box" class="drag-indicator-box"></div>
             <div class="preview-loader" id="preview-loader">
               <div class="spinner"></div>
               <span>Rendering frame...</span>
@@ -122,11 +107,9 @@
           </div>
           <div class="preview-click-hint">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>
             </svg>
-            Click anywhere on the frame above to instantly reposition the mask!
+            Click and drag directly on the video frame to position the mask!
           </div>
 
           <!-- Timeline Scrubber -->

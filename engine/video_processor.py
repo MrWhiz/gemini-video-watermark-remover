@@ -39,7 +39,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    default_box = get_default_gemini_bbox(width, height, frame=first_frame if ret else None)
+    default_box = get_default_gemini_bbox(width, height)
 
     return {
         "width": width,

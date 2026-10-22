@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from engine.video_processor import get_video_metadata, extract_frame_at_time, VideoProcessingTask
-from engine.mask_generator import generate_mask, detect_watermark_from_frame, get_default_gemini_bbox
+from engine.mask_generator import generate_mask
 from engine.inpainter import (
     TeleaInpainter, NavierStokesInpainter, BlurInpainter, LamaInpainter,
     LAMA_MODEL_PATH, download_lama_model
@@ -109,26 +109,6 @@ async def serve_video(video_id: str):
         if os.path.exists(path):
             return FileResponse(path, media_type="video/mp4")
     raise HTTPException(status_code=404, detail="Video not found")
-
-@app.get("/api/detect-watermark")
-async def detect_watermark(
-    video_id: str = Query(...),
-    time_sec: float = Query(0.0)
-):
-    if video_id not in video_registry:
-        raise HTTPException(status_code=404, detail="Video not found")
-        
-    path = video_registry[video_id]["path"]
-    frame = extract_frame_at_time(path, time_sec)
-    if frame is None:
-        raise HTTPException(status_code=400, detail="Could not extract frame at given timestamp")
-        
-    box = detect_watermark_from_frame(frame)
-    if not box:
-        h, w = frame.shape[:2]
-        box = get_default_gemini_bbox(w, h, frame=frame)
-        
-    return box
 
 @app.get("/api/preview-frame")
 async def preview_frame(

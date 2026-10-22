@@ -1,19 +1,16 @@
 # 🎬 Gemini AI Video Watermark Remover
 
-A high-performance, 100% local, web-based tool designed to cleanly and automatically remove the Google Gemini AI watermark (the 4-pointed translucent sparkle star) and other corner watermarks from videos.
+A high-performance, 100% local, web-based tool designed to cleanly remove the Google Gemini AI watermark (the 4-pointed translucent sparkle star) and other watermarks from videos.
 
-It combines **CUDA GPU-accelerated neural inpainting (LaMa)**, **OpenCV boundary propagation (Telea / Navier-Stokes)**, and **FFmpeg stream filters** with built-in automatic logo detection, interactive frame scrubbing, precise mask tuning, and lossless audio preservation.
+It combines **CUDA GPU-accelerated neural inpainting (LaMa)**, **OpenCV boundary propagation (Telea / Navier-Stokes)**, and **FFmpeg stream filters** with intuitive click-and-drag mask positioning, interactive frame scrubbing, precise mask tuning, and lossless audio preservation.
 
 ---
 
 ## ✨ Features
 
-- **Built-in Automatic Watermark Identification**:
-  - Automatically scans video frames on upload using multi-scale 4-pointed Gemini star template matching and morphological Top-Hat saliency filtering.
-  - Zero false-positives on background textures (pavements, grass, clouds).
-  - Automatically centers a full-coverage bounding box around the logo and its glow.
-- **Interactive Click-To-Position Targeting**:
-  - Simply click anywhere directly on the video preview frame to center the mask on that spot.
+- **Interactive Click & Draggable Mask Targeting**:
+  - Simply **click and drag** anywhere directly on the video preview frame to fluidly move and position the mask over the watermark in real time.
+  - Live visual bounding box provides immediate sub-millisecond feedback while dragging.
 - **Multi-Method Inpainting Engine**:
   - **LaMa AI (Neural Inpainting)**: Deep learning texture synthesis with Fast Fourier Convolutions. Hardware-accelerated with **NVIDIA CUDA GPU** (e.g. RTX 4060 Ti) running at ~10 FPS, or DirectML / CPU fallback.
   - **OpenCV Telea (Fast Marching)**: Propagates surrounding pixel gradients into the star shape. Clean edges and runs at 60+ FPS without ML overhead.
@@ -26,7 +23,6 @@ It combines **CUDA GPU-accelerated neural inpainting (LaMa)**, **OpenCV boundary
 - **Interactive Web Studio**:
   - Drag-and-drop video uploader (MP4, MOV, MKV, WebM).
   - Timeline scrubber to preview any frame.
-  - **"Auto-Detect Logo"** and **"Gemini Preset"** buttons.
   - **"Test Inpaint On Frame"** toggle: View instantaneous before/after inpainting on a single frame in <100ms before processing the full video.
 - **Lossless Audio Preservation**:
   - Automatically copies and re-muxes original audio tracks (`-c:a copy`) without re-encoding or audio sync loss.
@@ -100,10 +96,8 @@ Open **`http://localhost:8000`** in any modern web browser.
 - Supported formats: `.mp4`, `.mov`, `.mkv`, `.webm`.
 - Video metadata (resolution, frame rate, duration, and audio track status) will be displayed.
 
-### Step 2: Automatic Logo Identification & Alignment
-- The tool automatically analyzes the frame on upload and snaps the mask directly onto the logo!
-- If needed, click anywhere directly on the video preview to instantly center the mask on that spot.
-- Or click **"Auto-Detect Logo"** to re-scan the current frame.
+### Step 2: Position the Mask (Click & Drag)
+- Simply **click and drag** anywhere directly over the watermark on the video frame preview to position the mask.
 - Fine-tune using the sliders:
   - **Horizontal (X) / Vertical (Y)**: Fine coordinate adjustments.
   - **Width (W) / Height (H)**: Scale bounding box size.
@@ -137,14 +131,14 @@ Open **`http://localhost:8000`** in any modern web browser.
 ```text
 VideoEditor/
 ├── engine/
-│   ├── mask_generator.py      # Astroid star contour, template matcher & watermark detector
+│   ├── mask_generator.py      # Astroid star contour & mask geometry generator
 │   ├── inpainter.py           # Inpainting algorithms (LaMa CUDA, Telea, NS, Blur)
 │   └── video_processor.py     # FFmpeg pipeline, frame extraction & audio muxing
 ├── models/                    # Cached ONNX model weights (auto-downloaded)
 ├── static/
 │   ├── index.html             # Studio user interface
 │   ├── style.css              # Dark mode styling & glassmorphism design system
-│   └── app.js                 # Frontend application controller
+│   └── app.js                 # Frontend application controller with drag-to-target
 ├── uploads/                   # Staged input video files
 ├── outputs/                   # Exported watermark-removed videos
 ├── server.py                  # FastAPI server & REST API

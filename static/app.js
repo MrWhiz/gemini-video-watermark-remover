@@ -36,8 +36,8 @@ const valH = document.getElementById('val-h');
 const valDilation = document.getElementById('val-dilation');
 const valFeather = document.getElementById('val-feather');
 
-const btnAutoDetect = document.getElementById('btn-auto-detect');
-const btnAutoGemini = document.getElementById('btn-auto-gemini');
+const dragIndicator = document.getElementById('drag-indicator-box');
+let isDraggingMask = false;
 const shapeBtns = document.querySelectorAll('.shape-btn');
 const modeBtns = document.querySelectorAll('.btn-toggle');
 const methodCards = document.querySelectorAll('.method-card');
@@ -266,55 +266,6 @@ function setupSliderEvents() {
     schedulePreviewRefresh();
   });
 
-  if (btnAutoDetect) {
-    btnAutoDetect.addEventListener('click', async () => {
-      if (!currentVideoId) return;
-      const originalHtml = btnAutoDetect.innerHTML;
-      btnAutoDetect.innerHTML = `<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span> Detecting...`;
-      btnAutoDetect.disabled = true;
-
-      try {
-        const timeSec = timelineSlider ? timelineSlider.value : 0;
-        const res = await fetch(`/api/detect-watermark?video_id=${currentVideoId}&time_sec=${timeSec}`);
-        if (res.ok) {
-          const box = await res.json();
-          sliderX.value = box.x;
-          sliderY.value = box.y;
-          sliderW.value = box.w;
-          sliderH.value = box.h;
-          sliderDilation.value = box.dilation || 8;
-          sliderFeather.value = box.feather || 0;
-          if (box.shape) {
-            selectedShape = box.shape;
-            shapeBtns.forEach(b => {
-              b.classList.toggle('active', b.dataset.shape === box.shape);
-            });
-          }
-          updateSliderValueLabels();
-          schedulePreviewRefresh();
-        }
-      } catch (err) {
-        console.error("Auto detect watermark failed:", err);
-      } finally {
-        btnAutoDetect.innerHTML = originalHtml;
-        btnAutoDetect.disabled = false;
-      }
-    });
-  }
-
-  btnAutoGemini.addEventListener('click', () => {
-    if (videoMetadata && videoMetadata.suggested_box) {
-      const box = videoMetadata.suggested_box;
-      sliderX.value = box.x;
-      sliderY.value = box.y;
-      sliderW.value = box.w;
-      sliderH.value = box.h;
-      sliderDilation.value = box.dilation || 8;
-      sliderFeather.value = box.feather || 0;
-      updateSliderValueLabels();
-      schedulePreviewRefresh();
-    }
-  });
 }
 
 function updateTimelineReadout(seconds) {
@@ -361,27 +312,120 @@ async function refreshPreviewFrame() {
 }
 
 // Mode toggle
+function getImageRenderedBounds(img, naturalW, naturalH) {
+  const rect = img.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const imgRatio = naturalW / naturalH;
+  const containerRatio = rect.width / rect.height;
+
+  let renderW, renderH, offsetX, offsetY;
+  if (containerRatio > imgRatio) {
+    renderH = rect.height;
+    renderW = renderH * imgRatio;
+    offsetX = (rect.width - renderW) / 2;
+    offsetY = 0;
+  } else {
+    renderW = rect.width;
+    renderH = renderW / imgRatio;
+    offsetX = 0;
+    offsetY = (rect.height - renderH) / 2;
+  }
+
+  return {
+    left: rect.left + offsetX,
+    top: rect.top + offsetY,
+    width: renderW,
+    height: renderH
+  };
+}
+
+function updateDragIndicator(videoX, videoY, videoW, videoH) {
+  if (!videoMetadata || !previewImg || !dragIndicator) return;
+  const bounds = getImageRenderedBounds(previewImg, videoMetadata.width, videoMetadata.height);
+  if (!bounds) return;
+
+  const wrapperRect = previewWrapper.getBoundingClientRect();
+  const scale = bounds.width / videoMetadata.width;
+
+  const screenX = bounds.left - wrapperRect.left + (videoX * scale);
+  const screenY = bounds.top - wrapperRect.top + (videoY * scale);
+  const screenW = videoW * scale;
+  const screenH = videoH * scale;
+
+  dragIndicator.style.left = `${screenX}px`;
+  dragIndicator.style.top = `${screenY}px`;
+  dragIndicator.style.width = `${screenW}px`;
+  dragIndicator.style.height = `${screenH}px`;
+  dragIndicator.classList.add('active');
+}
+
+function hideDragIndicator() {
+  if (dragIndicator) {
+    dragIndicator.classList.remove('active');
+  }
+}
+
+function handlePointerPosition(clientX, clientY) {
+  if (!videoMetadata || !previewImg) return;
+  const bounds = getImageRenderedBounds(previewImg, videoMetadata.width, videoMetadata.height);
+  if (!bounds) return;
+
+  const relX = Math.max(0, Math.min(bounds.width, clientX - bounds.left));
+  const relY = Math.max(0, Math.min(bounds.height, clientY - bounds.top));
+
+  const videoScaleX = videoMetadata.width / bounds.width;
+  const videoScaleY = videoMetadata.height / bounds.height;
+
+  const clickX = Math.round(relX * videoScaleX);
+  const clickY = Math.round(relY * videoScaleY);
+
+  const w = parseInt(sliderW.value) || 68;
+  const h = parseInt(sliderH.value) || 68;
+
+  const posX = Math.max(0, Math.min(videoMetadata.width - w, Math.round(clickX - w / 2)));
+  const posY = Math.max(0, Math.min(videoMetadata.height - h, Math.round(clickY - h / 2)));
+
+  sliderX.value = posX;
+  sliderY.value = posY;
+
+  updateSliderValueLabels();
+  updateDragIndicator(posX, posY, w, h);
+  schedulePreviewRefresh();
+}
+
 function setupPreviewModeEvents() {
-  // Click directly on frame to center mask on clicked position
-  previewImg.addEventListener('click', (e) => {
+  // Click and drag directly on video frame to position mask
+  previewImg.addEventListener('pointerdown', (e) => {
     if (!videoMetadata) return;
-    const rect = previewImg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    isDraggingMask = true;
+    try {
+      previewImg.setPointerCapture(e.pointerId);
+    } catch (err) {}
+    handlePointerPosition(e.clientX, e.clientY);
+  });
 
-    const scaleX = videoMetadata.width / rect.width;
-    const scaleY = videoMetadata.height / rect.height;
+  window.addEventListener('pointermove', (e) => {
+    if (!isDraggingMask) return;
+    e.preventDefault();
+    handlePointerPosition(e.clientX, e.clientY);
+  });
 
-    const clickX = Math.round((e.clientX - rect.left) * scaleX);
-    const clickY = Math.round((e.clientY - rect.top) * scaleY);
+  window.addEventListener('pointerup', (e) => {
+    if (isDraggingMask) {
+      isDraggingMask = false;
+      try {
+        previewImg.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      setTimeout(hideDragIndicator, 350);
+      refreshPreviewFrame();
+    }
+  });
 
-    const w = parseInt(sliderW.value) || 68;
-    const h = parseInt(sliderH.value) || 68;
-
-    sliderX.value = Math.max(0, Math.min(videoMetadata.width - w, Math.round(clickX - w / 2)));
-    sliderY.value = Math.max(0, Math.min(videoMetadata.height - h, Math.round(clickY - h / 2)));
-
-    updateSliderValueLabels();
-    schedulePreviewRefresh();
+  window.addEventListener('pointercancel', () => {
+    if (isDraggingMask) {
+      isDraggingMask = false;
+      hideDragIndicator();
+    }
   });
 
   modeBtns.forEach(btn => {
