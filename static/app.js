@@ -1,0 +1,553 @@
+// Gemini Watermark Remover Web App Controller
+
+let currentVideoId = null;
+let videoMetadata = null;
+let currentTaskId = null;
+let progressPollTimer = null;
+let debounceTimer = null;
+let activeMode = 'mask'; // 'mask', 'inpaint', 'original'
+let selectedMethod = 'telea';
+let selectedShape = 'star';
+
+// Elements
+const dropzone = document.getElementById('dropzone');
+const videoFileInput = document.getElementById('video-file-input');
+const uploadPanel = document.getElementById('upload-panel');
+const editorWorkspace = document.getElementById('editor-workspace');
+const videoMetaBar = document.getElementById('video-meta-bar');
+
+const previewImg = document.getElementById('preview-image');
+const previewLoader = document.getElementById('preview-loader');
+const previewWrapper = document.getElementById('preview-wrapper');
+const timelineSlider = document.getElementById('timeline-slider');
+const timelineReadout = document.getElementById('timeline-readout');
+
+const sliderX = document.getElementById('slider-x');
+const sliderY = document.getElementById('slider-y');
+const sliderW = document.getElementById('slider-w');
+const sliderH = document.getElementById('slider-h');
+const sliderDilation = document.getElementById('slider-dilation');
+const sliderFeather = document.getElementById('slider-feather');
+
+const valX = document.getElementById('val-x');
+const valY = document.getElementById('val-y');
+const valW = document.getElementById('val-w');
+const valH = document.getElementById('val-h');
+const valDilation = document.getElementById('val-dilation');
+const valFeather = document.getElementById('val-feather');
+
+const btnAutoDetect = document.getElementById('btn-auto-detect');
+const btnAutoGemini = document.getElementById('btn-auto-gemini');
+const shapeBtns = document.querySelectorAll('.shape-btn');
+const modeBtns = document.querySelectorAll('.btn-toggle');
+const methodCards = document.querySelectorAll('.method-card');
+const btnStartProcess = document.getElementById('btn-start-process');
+
+const progressCard = document.getElementById('progress-card');
+const progressStatusLabel = document.getElementById('progress-status-label');
+const progressPercentage = document.getElementById('progress-percentage');
+const progressBarFill = document.getElementById('progress-bar-fill');
+const statFrames = document.getElementById('stat-frames');
+const statFps = document.getElementById('stat-fps');
+const statEta = document.getElementById('stat-eta');
+const statMethod = document.getElementById('stat-method');
+const btnCancelTask = document.getElementById('btn-cancel-task');
+
+const resultCard = document.getElementById('result-card');
+const resultVideoPlayer = document.getElementById('result-video-player');
+const btnDownloadVideo = document.getElementById('btn-download-video');
+const btnReprocess = document.getElementById('btn-reprocess');
+
+// --- Initialization & Event Listeners ---
+
+document.addEventListener('DOMContentLoaded', () => {
+  setupUploadEvents();
+  setupSliderEvents();
+  setupPreviewModeEvents();
+  setupShapeEvents();
+  setupMethodEvents();
+  setupProcessingEvents();
+  checkModelStatus();
+});
+
+// Check LaMa model status
+async function checkModelStatus() {
+  try {
+    const res = await fetch('/api/model-status');
+    const data = await res.json();
+    const lamaCard = document.getElementById('card-method-lama');
+    const statusText = document.getElementById('lama-status-text');
+    if (data.has_lama) {
+      statusText.textContent = "Ready (NVIDIA CUDA GPU)";
+      statusText.style.color = "#34d399";
+    } else if (data.is_downloading) {
+      statusText.textContent = `Downloading ${data.progress}%...`;
+      statusText.style.color = "#fbbf24";
+      setTimeout(checkModelStatus, 1500);
+    } else {
+      statusText.textContent = "Click to Auto-Download (~200MB)";
+      statusText.style.color = "#818cf8";
+    }
+  } catch (e) {
+    console.error("Failed to check model status", e);
+  }
+}
+
+// Upload Handling
+function setupUploadEvents() {
+  dropzone.addEventListener('click', () => videoFileInput.click());
+  
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+
+  dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('dragover');
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  });
+
+  videoFileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileUpload(e.target.files[0]);
+    }
+  });
+}
+
+async function handleFileUpload(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  dropzone.innerHTML = `
+    <div class="drop-icon">
+      <div class="spinner" style="width: 28px; height: 28px;"></div>
+    </div>
+    <div class="drop-text-main">Uploading & analyzing ${file.name}...</div>
+    <div class="drop-text-sub">Please wait a moment while frames and audio are inspected</div>
+  `;
+
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Upload failed");
+    }
+
+    const data = await res.json();
+    currentVideoId = data.video_id;
+    videoMetadata = data.meta;
+
+    // Show ready state with file info and option to replace
+    dropzone.innerHTML = `
+      <div class="drop-icon" style="color: #34d399;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+      </div>
+      <div class="drop-text-main" style="color: #34d399;">${data.filename} is ready</div>
+      <div class="drop-text-sub">Click or drop another file anytime to replace this video</div>
+      <div class="file-specs">
+        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.width} × ${data.meta.height}</span>
+        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.duration}s</span>
+        <span class="spec-pill" style="border-color: rgba(52, 211, 153, 0.4);">${data.meta.fps} FPS</span>
+      </div>
+    `;
+
+    displayVideoMetadata(data.filename, data.meta);
+    initializeSliders(data.meta);
+    editorWorkspace.classList.remove('hidden');
+
+    // Portrait vs Landscape aspect ratio adjustment
+    if (data.meta.height > data.meta.width) {
+      previewWrapper.classList.add('portrait');
+    } else {
+      previewWrapper.classList.remove('portrait');
+    }
+
+    // Scroll to editor
+    editorWorkspace.scrollIntoView({ behavior: 'smooth' });
+
+    // Initial frame load
+    refreshPreviewFrame();
+
+  } catch (error) {
+    alert("Error uploading video: " + error.message);
+    resetDropzone();
+  }
+}
+
+function resetDropzone() {
+  dropzone.innerHTML = `
+    <div class="drop-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+      </svg>
+    </div>
+    <div class="drop-text-main">Drop your video here or click to browse</div>
+    <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM (up to 4K resolution)</div>
+    <div class="file-specs">
+      <span class="spec-pill">Audio Preserved</span>
+      <span class="spec-pill">Local Processing</span>
+      <span class="spec-pill">Hardware Accelerated</span>
+    </div>
+  `;
+}
+
+function displayVideoMetadata(filename, meta) {
+  document.getElementById('meta-filename').textContent = filename;
+  document.getElementById('meta-resolution').textContent = `${meta.width} × ${meta.height}`;
+  document.getElementById('meta-duration').textContent = `${meta.duration}s (${meta.total_frames} frames)`;
+  document.getElementById('meta-fps').textContent = `${meta.fps} FPS`;
+  document.getElementById('meta-audio').textContent = meta.has_audio ? "Yes (Preserved)" : "None";
+  videoMetaBar.classList.remove('hidden');
+
+  timelineSlider.max = meta.duration;
+  timelineSlider.value = 0;
+  updateTimelineReadout(0);
+}
+
+function initializeSliders(meta) {
+  sliderX.max = meta.width;
+  sliderY.max = meta.height;
+  sliderW.max = Math.min(meta.width, 400);
+  sliderH.max = Math.min(meta.height, 400);
+
+  const box = meta.suggested_box;
+  sliderX.value = box.x;
+  sliderY.value = box.y;
+  sliderW.value = box.w;
+  sliderH.value = box.h;
+  sliderDilation.value = box.dilation || 8;
+  sliderFeather.value = box.feather || 0;
+
+  if (box.shape) {
+    selectedShape = box.shape;
+    shapeBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.shape === box.shape);
+    });
+  }
+
+  updateSliderValueLabels();
+}
+
+function updateSliderValueLabels() {
+  valX.textContent = `${sliderX.value}px`;
+  valY.textContent = `${sliderY.value}px`;
+  valW.textContent = `${sliderW.value}px`;
+  valH.textContent = `${sliderH.value}px`;
+  valDilation.textContent = `${sliderDilation.value}px`;
+  valFeather.textContent = `${sliderFeather.value}px`;
+}
+
+// Sliders and Position Events
+function setupSliderEvents() {
+  const sliders = [sliderX, sliderY, sliderW, sliderH, sliderDilation, sliderFeather];
+  sliders.forEach(slider => {
+    slider.addEventListener('input', () => {
+      updateSliderValueLabels();
+      schedulePreviewRefresh();
+    });
+  });
+
+  timelineSlider.addEventListener('input', () => {
+    updateTimelineReadout(parseFloat(timelineSlider.value));
+    schedulePreviewRefresh();
+  });
+
+  if (btnAutoDetect) {
+    btnAutoDetect.addEventListener('click', async () => {
+      if (!currentVideoId) return;
+      const originalHtml = btnAutoDetect.innerHTML;
+      btnAutoDetect.innerHTML = `<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span> Detecting...`;
+      btnAutoDetect.disabled = true;
+
+      try {
+        const timeSec = timelineSlider ? timelineSlider.value : 0;
+        const res = await fetch(`/api/detect-watermark?video_id=${currentVideoId}&time_sec=${timeSec}`);
+        if (res.ok) {
+          const box = await res.json();
+          sliderX.value = box.x;
+          sliderY.value = box.y;
+          sliderW.value = box.w;
+          sliderH.value = box.h;
+          sliderDilation.value = box.dilation || 8;
+          sliderFeather.value = box.feather || 0;
+          if (box.shape) {
+            selectedShape = box.shape;
+            shapeBtns.forEach(b => {
+              b.classList.toggle('active', b.dataset.shape === box.shape);
+            });
+          }
+          updateSliderValueLabels();
+          schedulePreviewRefresh();
+        }
+      } catch (err) {
+        console.error("Auto detect watermark failed:", err);
+      } finally {
+        btnAutoDetect.innerHTML = originalHtml;
+        btnAutoDetect.disabled = false;
+      }
+    });
+  }
+
+  btnAutoGemini.addEventListener('click', () => {
+    if (videoMetadata && videoMetadata.suggested_box) {
+      const box = videoMetadata.suggested_box;
+      sliderX.value = box.x;
+      sliderY.value = box.y;
+      sliderW.value = box.w;
+      sliderH.value = box.h;
+      sliderDilation.value = box.dilation || 8;
+      sliderFeather.value = box.feather || 0;
+      updateSliderValueLabels();
+      schedulePreviewRefresh();
+    }
+  });
+}
+
+function updateTimelineReadout(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = (seconds % 60).toFixed(1);
+  timelineReadout.textContent = `${mins.toString().padStart(2, '0')}:${secs.padStart(4, '0')}`;
+}
+
+function schedulePreviewRefresh() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(refreshPreviewFrame, 120);
+}
+
+// Fetch preview frame
+async function refreshPreviewFrame() {
+  if (!currentVideoId) return;
+
+  previewLoader.classList.add('active');
+
+  const params = new URLSearchParams({
+    video_id: currentVideoId,
+    time_sec: timelineSlider.value,
+    mode: activeMode,
+    method: selectedMethod,
+    x: sliderX.value,
+    y: sliderY.value,
+    w: sliderW.value,
+    h: sliderH.value,
+    shape: selectedShape,
+    dilation: sliderDilation.value,
+    feather: sliderFeather.value
+  });
+
+  const url = `/api/preview-frame?${params.toString()}`;
+  const img = new Image();
+  img.onload = () => {
+    previewImg.src = url;
+    previewLoader.classList.remove('active');
+  };
+  img.onerror = () => {
+    previewLoader.classList.remove('active');
+  };
+  img.src = url;
+}
+
+// Mode toggle
+function setupPreviewModeEvents() {
+  // Click directly on frame to center mask on clicked position
+  previewImg.addEventListener('click', (e) => {
+    if (!videoMetadata) return;
+    const rect = previewImg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const scaleX = videoMetadata.width / rect.width;
+    const scaleY = videoMetadata.height / rect.height;
+
+    const clickX = Math.round((e.clientX - rect.left) * scaleX);
+    const clickY = Math.round((e.clientY - rect.top) * scaleY);
+
+    const w = parseInt(sliderW.value) || 68;
+    const h = parseInt(sliderH.value) || 68;
+
+    sliderX.value = Math.max(0, Math.min(videoMetadata.width - w, Math.round(clickX - w / 2)));
+    sliderY.value = Math.max(0, Math.min(videoMetadata.height - h, Math.round(clickY - h / 2)));
+
+    updateSliderValueLabels();
+    schedulePreviewRefresh();
+  });
+
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      modeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeMode = btn.dataset.mode;
+      refreshPreviewFrame();
+    });
+  });
+}
+
+// Shape events
+function setupShapeEvents() {
+  shapeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      shapeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedShape = btn.dataset.shape;
+      schedulePreviewRefresh();
+    });
+  });
+}
+
+// Method selection
+function setupMethodEvents() {
+  methodCards.forEach(card => {
+    card.addEventListener('click', async () => {
+      methodCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedMethod = card.dataset.method;
+
+      // If user selected LaMa AI, check if model needs download
+      if (selectedMethod === 'lama') {
+        const res = await fetch('/api/model-status');
+        const data = await res.json();
+        if (!data.has_lama && !data.is_downloading) {
+          if (confirm("LaMa AI Inpainting model (~200MB) needs to be downloaded once for local neural inpainting. Download now?")) {
+            await fetch('/api/download-lama-model', { method: 'POST' });
+            checkModelStatus();
+          }
+        }
+      }
+
+      if (activeMode === 'inpaint') {
+        refreshPreviewFrame();
+      }
+    });
+  });
+}
+
+// Processing & Progress
+function setupProcessingEvents() {
+  btnStartProcess.addEventListener('click', startVideoProcessing);
+  btnCancelTask.addEventListener('click', cancelActiveTask);
+  btnReprocess.addEventListener('click', () => {
+    resultCard.classList.remove('active');
+    editorWorkspace.scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+async function startVideoProcessing() {
+  if (!currentVideoId) return;
+
+  btnStartProcess.disabled = true;
+  progressCard.classList.add('active');
+  resultCard.classList.remove('active');
+  progressCard.scrollIntoView({ behavior: 'smooth' });
+
+  const payload = {
+    video_id: currentVideoId,
+    method: selectedMethod,
+    x: parseInt(sliderX.value),
+    y: parseInt(sliderY.value),
+    w: parseInt(sliderW.value),
+    h: parseInt(sliderH.value),
+    shape: selectedShape,
+    dilation: parseInt(sliderDilation.value),
+    feather: parseInt(sliderFeather.value)
+  };
+
+  statMethod.textContent = selectedMethod.toUpperCase();
+
+  try {
+    const res = await fetch('/api/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to start processing task");
+    }
+
+    const data = await res.json();
+    currentTaskId = data.task_id;
+    startProgressPolling(currentTaskId);
+
+  } catch (error) {
+    alert("Error: " + error.message);
+    btnStartProcess.disabled = false;
+    progressCard.classList.remove('active');
+  }
+}
+
+function startProgressPolling(taskId) {
+  clearInterval(progressPollTimer);
+  progressPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/task-status/${taskId}`);
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      // Update progress bar
+      progressPercentage.textContent = `${Math.round(data.progress)}%`;
+      progressBarFill.style.width = `${data.progress}%`;
+
+      // Update stats
+      statFrames.textContent = `${data.current_frame} / ${data.total_frames}`;
+      statFps.textContent = `${data.fps} FPS`;
+      statEta.textContent = data.eta_seconds > 0 ? `${data.eta_seconds}s remaining` : (data.status === 'completed' ? 'Done' : 'Finalizing...');
+
+      if (data.status === 'processing') {
+        progressStatusLabel.textContent = `Inpainting watermark frames (${Math.round(data.progress)}%)...`;
+      } else if (data.status === 'completing') {
+        progressStatusLabel.textContent = "Muxing audio & finalizing video...";
+      } else if (data.status === 'completed') {
+        clearInterval(progressPollTimer);
+        handleTaskCompleted(taskId);
+      } else if (data.status === 'cancelled') {
+        clearInterval(progressPollTimer);
+        progressStatusLabel.textContent = "Processing cancelled.";
+        btnStartProcess.disabled = false;
+      } else if (data.status === 'failed') {
+        clearInterval(progressPollTimer);
+        alert("Processing failed: " + (data.error_message || "Unknown error"));
+        btnStartProcess.disabled = false;
+        progressCard.classList.remove('active');
+      }
+    } catch (e) {
+      console.error("Poll error", e);
+    }
+  }, 400);
+}
+
+function handleTaskCompleted(taskId) {
+  progressCard.classList.remove('active');
+  btnStartProcess.disabled = false;
+
+  resultCard.classList.add('active');
+  resultVideoPlayer.src = `/api/video/${taskId}?t=${Date.now()}`;
+  resultVideoPlayer.load();
+
+  btnDownloadVideo.onclick = () => {
+    window.location.href = `/api/download/${taskId}`;
+  };
+
+  resultCard.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function cancelActiveTask() {
+  if (!currentTaskId) return;
+  try {
+    await fetch(`/api/cancel/${currentTaskId}`, { method: 'POST' });
+  } catch (e) {
+    console.error(e);
+  }
+}

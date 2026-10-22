@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# User uploads & processed outputs
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+actual_star_crop.png
+
+# AI Model checkpoints (auto-downloaded on demand ~200MB)
+models/*.onnx
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & temp files
+*.log
+scratch/

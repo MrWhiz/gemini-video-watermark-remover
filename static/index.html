@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Watermark Remover — Local AI Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Gemini Watermark Remover</h1>
+          <p class="brand-subtitle">Local AI & Multi-Method Video Watermark Inpainter</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge gpu" id="gpu-badge">
+          <span class="badge-dot"></span> RTX 4060 Ti DirectML
+        </span>
+        <span class="badge local">
+          <span class="badge-dot"></span> 100% Local & Private
+        </span>
+      </div>
+    </header>
+
+    <!-- Step 1: Upload Video -->
+    <section class="glass-panel" id="upload-panel">
+      <div class="panel-title">
+        <div class="panel-title-text">
+          <span class="step-num">1</span>
+          <span>Select or Drop Video</span>
+        </div>
+      </div>
+
+      <input type="file" id="video-file-input" accept="video/mp4,video/quicktime,video/x-matroska,video/webm" style="display: none;">
+      <div class="dropzone" id="dropzone">
+        <div class="drop-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+        </div>
+        <div class="drop-text-main">Drop your video here or click to browse</div>
+        <div class="drop-text-sub">Supports MP4, MOV, MKV, WebM (up to 4K resolution)</div>
+        <div class="file-specs">
+          <span class="spec-pill">Audio Preserved</span>
+          <span class="spec-pill">Local Processing</span>
+          <span class="spec-pill">Hardware Accelerated</span>
+        </div>
+      </div>
+
+      <!-- Video Meta Details -->
+      <div class="video-meta-bar hidden" id="video-meta-bar">
+        <div class="meta-item">
+          <span class="meta-label">File</span>
+          <span class="meta-value" id="meta-filename">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Resolution</span>
+          <span class="meta-value" id="meta-resolution">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Duration</span>
+          <span class="meta-value" id="meta-duration">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Framerate</span>
+          <span class="meta-value" id="meta-fps">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Audio Track</span>
+          <span class="meta-value" id="meta-audio">-</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Editor Workspace (Hidden until video is loaded) -->
+    <div id="editor-workspace" class="hidden">
+      <div class="workspace-grid">
+        
+        <!-- Left: Interactive Video Canvas / Frame Preview -->
+        <section class="glass-panel" id="preview-panel">
+          <div class="panel-title">
+            <div class="panel-title-text">
+              <span class="step-num">2</span>
+              <span>Watermark Targeter & Live Preview</span>
+            </div>
+            <div class="preset-actions-row">
+              <button class="btn-secondary" id="btn-auto-detect" title="Scan current frame to auto-detect watermark/logo">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                Auto-Detect Logo
+              </button>
+              <button class="btn-secondary" id="btn-auto-gemini" title="Reset to standard Gemini corner">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                </svg>
+                Gemini Preset
+              </button>
+            </div>
+          </div>
+
+          <!-- Video Frame Viewer -->
+          <div class="preview-viewer-wrapper" id="preview-wrapper">
+            <img id="preview-image" class="preview-img" alt="Frame Preview" title="Click anywhere on the frame to move mask here">
+            <div class="preview-loader" id="preview-loader">
+              <div class="spinner"></div>
+              <span>Rendering frame...</span>
+            </div>
+          </div>
+          <div class="preview-click-hint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            Click anywhere on the frame above to instantly reposition the mask!
+          </div>
+
+          <!-- Timeline Scrubber -->
+          <div class="scrubber-control-row">
+            <input type="range" id="timeline-slider" class="timeline-slider" min="0" max="100" step="0.1" value="0">
+            <span class="time-readout" id="timeline-readout">00:00.0</span>
+          </div>
+
+          <!-- Preview Mode Toggles -->
+          <div class="mode-toggle-group">
+            <button class="btn-toggle active" id="btn-mode-mask" data-mode="mask">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M12 8v8M8 12h8"/>
+              </svg>
+              Show Mask Overlay
+            </button>
+            <button class="btn-toggle" id="btn-mode-inpaint" data-mode="inpaint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Test Inpaint On Frame
+            </button>
+            <button class="btn-toggle" id="btn-mode-original" data-mode="original">
+              Original Frame
+            </button>
+          </div>
+        </section>
+
+        <!-- Right: Target Tuning & Mask Shape Settings -->
+        <section class="glass-panel" id="controls-panel">
+          <div class="panel-title">
+            <div class="panel-title-text">
+              <span class="step-num">3</span>
+              <span>Target & Mask Geometry</span>
+            </div>
+          </div>
+
+          <div class="controls-form">
+            <!-- Mask Shape -->
+            <div class="control-group">
+              <label class="control-label-row">
+                <span>Mask Contour</span>
+              </label>
+              <div class="shape-selector-group">
+                <button class="shape-btn active" data-shape="star" id="shape-star">
+                  ✦ Gemini Star
+                </button>
+                <button class="shape-btn" data-shape="box" id="shape-box">
+                  ▭ Rectangle Box
+                </button>
+                <button class="shape-btn" data-shape="circle" id="shape-circle">
+                  ◯ Circle
+                </button>
+              </div>
+            </div>
+
+            <!-- Position X & Y -->
+            <div class="grid-2">
+              <div class="control-group">
+                <div class="control-label-row">
+                  <span>Horizontal (X)</span>
+                  <span class="control-value-badge" id="val-x">0px</span>
+                </div>
+                <input type="range" class="range-slider" id="slider-x" min="0" max="1920" value="0">
+              </div>
+
+              <div class="control-group">
+                <div class="control-label-row">
+                  <span>Vertical (Y)</span>
+                  <span class="control-value-badge" id="val-y">0px</span>
+                </div>
+                <input type="range" class="range-slider" id="slider-y" min="0" max="1080" value="0">
+              </div>
+            </div>
+
+            <!-- Width & Height -->
+            <div class="grid-2">
+              <div class="control-group">
+                <div class="control-label-row">
+                  <span>Width (W)</span>
+                  <span class="control-value-badge" id="val-w">60px</span>
+                </div>
+                <input type="range" class="range-slider" id="slider-w" min="16" max="260" value="60">
+              </div>
+
+              <div class="control-group">
+                <div class="control-label-row">
+                  <span>Height (H)</span>
+                  <span class="control-value-badge" id="val-h">60px</span>
+                </div>
+                <input type="range" class="range-slider" id="slider-h" min="16" max="260" value="60">
+              </div>
+            </div>
+
+            <!-- Dilation -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Mask Expansion / Dilation</span>
+                <span class="control-value-badge" id="val-dilation">3px</span>
+              </div>
+              <input type="range" class="range-slider" id="slider-dilation" min="0" max="12" value="3">
+            </div>
+
+            <!-- Feathering -->
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Soft Feather Border</span>
+                <span class="control-value-badge" id="val-feather">0px</span>
+              </div>
+              <input type="range" class="range-slider" id="slider-feather" min="0" max="10" value="0">
+            </div>
+
+          </div>
+        </section>
+      </div>
+
+      <!-- Step 4: Removal Method Selector -->
+      <section class="glass-panel" id="methods-panel">
+        <div class="panel-title">
+          <div class="panel-title-text">
+            <span class="step-num">4</span>
+            <span>Select Inpainting Method</span>
+          </div>
+        </div>
+
+        <div class="methods-grid">
+          <!-- Method 1: LaMa AI -->
+          <div class="method-card" data-method="lama" id="card-method-lama">
+            <div>
+              <div class="method-card-header">
+                <span class="method-title">AI Inpainting (LaMa)</span>
+                <span class="method-tag tag-ai">AI Neural</span>
+              </div>
+              <p class="method-desc">
+                Deep learning texture synthesis with Fourier convolutions. Reconstructs complex patterns without blur. GPU accelerated.
+              </p>
+            </div>
+            <div class="method-footer">
+              <span id="lama-status-text">Ready (DirectML GPU)</span>
+              <span>Highest Quality</span>
+            </div>
+          </div>
+
+          <!-- Method 2: OpenCV Telea -->
+          <div class="method-card selected" data-method="telea" id="card-method-telea">
+            <div>
+              <div class="method-card-header">
+                <span class="method-title">OpenCV Telea</span>
+                <span class="method-tag tag-fast">Fast Marching</span>
+              </div>
+              <p class="method-desc">
+                Propagates surrounding pixel gradients into the star shape. Clean edges and zero ML overhead.
+              </p>
+            </div>
+            <div class="method-footer">
+              <span>Ultra Fast (60+ FPS)</span>
+              <span>Recommended</span>
+            </div>
+          </div>
+
+          <!-- Method 3: Navier-Stokes -->
+          <div class="method-card" data-method="navier_stokes" id="card-method-ns">
+            <div>
+              <div class="method-card-header">
+                <span class="method-title">Navier-Stokes</span>
+                <span class="method-tag tag-fast">Fluid PDEs</span>
+              </div>
+              <p class="method-desc">
+                Fluid dynamics partial differential equations. Excellent for smooth continuous gradients and lighting.
+              </p>
+            </div>
+            <div class="method-footer">
+              <span>Fast (50+ FPS)</span>
+              <span>Smooth</span>
+            </div>
+          </div>
+
+          <!-- Method 4: FFmpeg Delogo -->
+          <div class="method-card" data-method="delogo" id="card-method-delogo">
+            <div>
+              <div class="method-card-header">
+                <span class="method-title">FFmpeg Delogo</span>
+                <span class="method-tag tag-instant">Instant</span>
+              </div>
+              <p class="method-desc">
+                Direct stream filtering interpolating the bounding rectangle borders. Fastest processing speed.
+              </p>
+            </div>
+            <div class="method-footer">
+              <span>>150 FPS</span>
+              <span>Instant</span>
+            </div>
+          </div>
+
+          <!-- Method 5: Blur -->
+          <div class="method-card" data-method="blur" id="card-method-blur">
+            <div>
+              <div class="method-card-header">
+                <span class="method-title">Gaussian Conceal</span>
+                <span class="method-tag tag-instant">Blur</span>
+              </div>
+              <p class="method-desc">
+                Applies a feather-blended soft focus over the watermark region for subtle concealment.
+              </p>
+            </div>
+            <div class="method-footer">
+              <span>Instant</span>
+              <span>Soft</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Start Button -->
+        <button class="btn-primary-action" id="btn-start-process">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          Remove Watermark & Export Video
+        </button>
+      </section>
+
+      <!-- Processing Progress Panel -->
+      <section class="glass-panel progress-card" id="progress-card">
+        <div class="progress-header">
+          <span class="progress-status-text" id="progress-status-label">Processing Video...</span>
+          <span class="progress-pct" id="progress-percentage">0%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
+        <div class="progress-stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Frames Processed</span>
+            <span class="stat-value" id="stat-frames">0 / 0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Speed</span>
+            <span class="stat-value" id="stat-fps">0.0 FPS</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Time Remaining</span>
+            <span class="stat-value" id="stat-eta">Calculating...</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Inpainter</span>
+            <span class="stat-value" id="stat-method">Telea</span>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <button class="btn-cancel" id="btn-cancel-task">Cancel Processing</button>
+        </div>
+      </section>
+
+      <!-- Step 5: Result & Download Panel -->
+      <section class="glass-panel result-card" id="result-card">
+        <div class="panel-title">
+          <div class="panel-title-text">
+            <span class="step-num" style="background: var(--accent-emerald);">✓</span>
+            <span>Watermark Removed Successfully</span>
+          </div>
+        </div>
+
+        <div class="result-video-wrapper">
+          <video id="result-video-player" controls preload="metadata"></video>
+        </div>
+
+        <div class="result-actions">
+          <button class="btn-download" id="btn-download-video">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            Download Clean Video
+          </button>
+          <button class="btn-secondary" id="btn-reprocess" style="flex: 1;">
+            Process Another Video
+          </button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
